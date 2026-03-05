@@ -836,6 +836,48 @@ app.post('/api/live/news/web-search', async (c) => {
     return new Response(await resp.text(), { status: resp.status, headers: { 'Content-Type': 'application/json' } })
   } catch(e: any) { return c.json({ error: e.message }, 503) }
 })
+
+// ── NEW v3.0: Premium data sources (Bloomberg, Reuters, Congress) ───────────
+app.get('/api/live/news/bloomberg', async (c) => {
+  const category = c.req.query('category') || 'market'
+  try { return proxyFetch(`${NEWS_SVC}/api/news/bloomberg?category=${category}`) }
+  catch(e: any) { return c.json({ articles: [], error: e.message }, 503) }
+})
+app.get('/api/live/news/reuters', async (c) => {
+  try { return proxyFetch(`${NEWS_SVC}/api/news/reuters`) }
+  catch(e: any) { return c.json({ articles: [], error: e.message }, 503) }
+})
+app.get('/api/live/news/congress', async (c) => {
+  try { return proxyFetch(`${NEWS_SVC}/api/news/congress`) }
+  catch(e: any) { return c.json({ bills: [], error: e.message }, 503) }
+})
+
+// ── NEW v3.0: Async PDF upload + job polling ────────────────────────────────
+app.post('/api/live/news/factset/upload-async', async (c) => {
+  try {
+    const formData = await c.req.formData()
+    const resp = await fetch(`${NEWS_SVC}/api/news/factset/upload-async`, {
+      method: 'POST',
+      body: formData,
+    })
+    return new Response(await resp.text(), { status: resp.status, headers: { 'Content-Type': 'application/json' } })
+  } catch(e: any) { return c.json({ error: e.message }, 503) }
+})
+app.get('/api/live/news/agent/job/:jobId', async (c) => {
+  try { return proxyFetch(`${NEWS_SVC}/api/news/agent/job/${c.req.param('jobId')}`) }
+  catch(e: any) { return c.json({ error: e.message }, 503) }
+})
+
+// ── NEW v3.0: Sentiment dashboard + agent status ────────────────────────────
+app.get('/api/live/news/sentiment-dashboard', async (c) => {
+  try { return proxyFetch(`${NEWS_SVC}/api/news/sentiment-dashboard`) }
+  catch(e: any) { return c.json({ error: e.message, composite_score: 0, regime: 'neutral' }, 503) }
+})
+app.get('/api/live/news/agent/status', async (c) => {
+  try { return proxyFetch(`${NEWS_SVC}/api/news/agent/status`) }
+  catch(e: any) { return c.json({ error: e.message }, 503) }
+})
+
 // ── Research library (served by trading service) ──────────────────────────────
 app.get('/api/live/research/status', async (c) => {
   try { return proxyFetch(`${PERF_SVC}/api/research/status`) }

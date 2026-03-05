@@ -5281,16 +5281,18 @@ async function renderPerformance(el) {
 }
 
 // ╔══════════════════════════════════════════════════════════════════════╗
-// ║  9. NEWS AGENT  — Institutional News Intelligence                    ║
-// ║  LIVE: Yahoo Finance RSS + Global + US Congress Policy               ║
+// ║  9. NEWS STATION v3.0 — AI Intelligence Hub (3-Layer Architecture)  ║
+// ║  Layer 1: FactSet PDF AI Agent | Layer 2: Sentiment Dashboard       ║
+// ║  Layer 3: Bloomberg + Reuters + Congress.gov                         ║
 // ╚══════════════════════════════════════════════════════════════════════╝
 async function renderNewsAgent(el) {
   el.innerHTML = `<div class="flex items-center justify-center h-32 text-gray-500">
-    <i class="fas fa-spinner fa-spin mr-2"></i>Loading live news…</div>`;
+    <i class="fas fa-spinner fa-spin mr-2"></i>Loading News Station v3.0…</div>`;
 
   // ── state ──────────────────────────────────────────────────────────
   window._naCategory = window._naCategory || 'all';
   window._naSearch   = window._naSearch   || '';
+  window._naLayer    = window._naLayer    || 1;
 
   let liveData = null;
   try {
@@ -5414,13 +5416,13 @@ async function renderNewsAgent(el) {
   <div>
     <h2 class="text-xl font-bold text-gray-900 flex items-center gap-2">
       <i class="fas fa-newspaper text-blue-600"></i>
-      新闻情报 News Intel · 机构宏观监控 Institutional Monitor
+      新闻情报站 News Station v3.0 — AI Intelligence Hub
       ${isLive
         ? `<span class="text-[9px] font-bold px-2 py-0.5 rounded-full animate-pulse" style="background:#dcfce7;color:#166534;border:1px solid #86efac"><i class="fas fa-circle" style="font-size:5px"></i> LIVE</span>`
         : `<span class="text-[9px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">DEMO</span>`}
     </h2>
     <p class="text-gray-500 text-xs mt-0.5">
-      Yahoo Finance RSS · Reuters · US Congress.gov · FactSet News — ${total} articles
+      3-Layer Architecture: FactSet AI Agent | Sentiment Dashboard | Bloomberg · Reuters · Congress — ${total} articles
       ${isLive ? `<span class="text-emerald-600 ml-1">· 实时数据</span>` : `<span class="text-amber-600 ml-1">· 实时接口加载中，显示演示数据</span>`}
     </p>
   </div>
@@ -5428,11 +5430,162 @@ async function renderNewsAgent(el) {
     <button onclick="window._naRefresh()" class="px-3 py-1.5 rounded-lg text-xs font-medium" style="background:#eff6ff;border:1px solid #bfdbfe;color:#2563eb">
       <i class="fas fa-sync-alt mr-1"></i>刷新
     </button>
-    <a href="https://finance.yahoo.com/news/" target="_blank" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-purple-50 border border-purple-200 text-purple-700">
-      <i class="fab fa-yahoo mr-1"></i>Yahoo Finance
-    </a>
+    <button onclick="window._naCheckAgentStatus()" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-purple-50 border border-purple-200 text-purple-700">
+      <i class="fas fa-robot mr-1"></i>Agent Status
+    </button>
   </div>
 </div>
+
+<!-- 3-LAYER TAB BAR -->
+<div class="flex items-center gap-1 mb-4 bg-gray-100 p-1 rounded-xl">
+  <button id="na-tab-1" onclick="window._naSetLayer(1)"
+    class="flex-1 px-4 py-2 rounded-lg text-xs font-bold transition-all ${window._naLayer===1?'bg-white text-indigo-700 shadow-sm':'text-gray-500 hover:text-gray-700'}">
+    <i class="fas fa-robot mr-1"></i>Layer 1: FactSet AI Agent
+  </button>
+  <button id="na-tab-2" onclick="window._naSetLayer(2)"
+    class="flex-1 px-4 py-2 rounded-lg text-xs font-bold transition-all ${window._naLayer===2?'bg-white text-indigo-700 shadow-sm':'text-gray-500 hover:text-gray-700'}">
+    <i class="fas fa-chart-bar mr-1"></i>Layer 2: Sentiment & News
+  </button>
+  <button id="na-tab-3" onclick="window._naSetLayer(3)"
+    class="flex-1 px-4 py-2 rounded-lg text-xs font-bold transition-all ${window._naLayer===3?'bg-white text-indigo-700 shadow-sm':'text-gray-500 hover:text-gray-700'}">
+    <i class="fas fa-broadcast-tower mr-1"></i>Layer 3: Premium Sources
+  </button>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  LAYER 1: FactSet PDF AI Agent Workspace                      -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+<div id="na-layer-1" style="${window._naLayer===1?'':'display:none'}">
+
+  <!-- Drag & Drop Upload Zone -->
+  <div id="na-dropzone" class="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center mb-4 transition-all cursor-pointer hover:border-indigo-400 hover:bg-indigo-50/30"
+    ondragover="event.preventDefault();this.classList.add('border-indigo-500','bg-indigo-50')"
+    ondragleave="this.classList.remove('border-indigo-500','bg-indigo-50')"
+    ondrop="event.preventDefault();this.classList.remove('border-indigo-500','bg-indigo-50');window._naDropFile(event)"
+    onclick="document.getElementById('na-factset-file-async').click()">
+    <input type="file" id="na-factset-file-async" accept=".pdf" class="hidden" onchange="window._naUploadFactSetAsync()" />
+    <i class="fas fa-cloud-upload-alt text-4xl text-gray-300 mb-2"></i>
+    <div class="text-sm font-semibold text-gray-600">拖拽 FactSet PDF 至此处 · 或点击选择文件</div>
+    <div class="text-[10px] text-gray-400 mt-1">Drag & drop FactSet report PDF — AI Agent will analyze automatically</div>
+  </div>
+
+  <!-- AI Agent Terminal -->
+  <div class="bg-gray-900 rounded-xl overflow-hidden mb-4 shadow-lg">
+    <div class="flex items-center gap-2 px-4 py-2 bg-gray-800 border-b border-gray-700">
+      <span class="w-3 h-3 rounded-full bg-red-500"></span>
+      <span class="w-3 h-3 rounded-full bg-yellow-500"></span>
+      <span class="w-3 h-3 rounded-full bg-green-500"></span>
+      <span class="text-[10px] text-gray-400 ml-2 font-mono">QuantAlpha AI Agent Terminal — News Station v3.0</span>
+      <span id="na-agent-indicator" class="ml-auto text-[9px] px-2 py-0.5 rounded-full bg-gray-700 text-gray-400">IDLE</span>
+    </div>
+    <div id="na-terminal" class="p-4 font-mono text-xs text-green-400 h-48 overflow-y-auto leading-relaxed" style="scrollbar-width:thin;scrollbar-color:#374151 #111827">
+      <div class="text-gray-500">$ QuantAlpha News Agent v3.0 initialized</div>
+      <div class="text-gray-500">$ Waiting for FactSet PDF input...</div>
+      <div class="text-gray-600">$ Type: AI-powered PDF analysis with pydantic validation</div>
+      <div class="text-gray-600">$ Fallback: Rule-based keyword NLP (if AI unavailable)</div>
+    </div>
+  </div>
+
+  <!-- Output Cards (hidden until analysis completes) -->
+  <div id="na-output-cards" style="display:none" class="space-y-4 mb-4">
+    <div class="bg-white border border-gray-200 rounded-xl overflow-hidden">
+      <div class="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
+        <i class="fas fa-file-alt text-blue-500"></i>
+        <span class="text-sm font-bold text-gray-900">Core Summary</span>
+        <span id="na-output-method" class="ml-auto text-[9px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-500"></span>
+        <span id="na-output-score" class="text-[9px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-500"></span>
+      </div>
+      <div id="na-output-summary" class="p-4 text-sm text-gray-700 leading-relaxed"></div>
+    </div>
+    <div class="bg-white border border-gray-200 rounded-xl overflow-hidden">
+      <div class="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
+        <i class="fas fa-th text-indigo-500"></i>
+        <span class="text-sm font-bold text-gray-900">Impact Matrix — Per-Ticker Scores</span>
+      </div>
+      <div id="na-output-matrix" class="p-4 flex flex-wrap gap-2"></div>
+    </div>
+    <div class="bg-white border border-gray-200 rounded-xl overflow-hidden">
+      <div class="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
+        <i class="fas fa-exclamation-triangle text-amber-500"></i>
+        <span class="text-sm font-bold text-gray-900">Macro Warnings</span>
+      </div>
+      <div id="na-output-warnings" class="p-4 space-y-2"></div>
+    </div>
+  </div>
+
+  <!-- Sync Upload (legacy) + Stored Reports -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+    <div class="bg-white border border-gray-200 rounded-xl overflow-hidden">
+      <div class="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
+        <i class="fas fa-file-pdf text-red-500"></i>
+        <span class="text-sm font-bold text-gray-900">同步上传 Sync Upload</span>
+        <span class="text-[9px] bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full ml-auto">Legacy</span>
+      </div>
+      <div class="p-4">
+        <div class="flex items-center gap-2 mb-3">
+          <input type="file" id="na-factset-file" accept=".pdf" class="text-xs flex-1" />
+          <button onclick="window._naUploadFactSet()" class="px-4 py-1.5 bg-gray-600 text-white text-xs font-semibold rounded-lg hover:bg-gray-700 transition">
+            <i class="fas fa-upload mr-1"></i>同步解析
+          </button>
+        </div>
+        <div id="na-factset-status" class="text-xs text-gray-500">同步模式: 阻塞等待结果 (无AI Agent)</div>
+      </div>
+    </div>
+    <div class="bg-white border border-gray-200 rounded-xl overflow-hidden">
+      <div class="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
+        <i class="fas fa-database text-emerald-500"></i>
+        <span class="text-sm font-bold text-gray-900">已存储报告 Stored Reports</span>
+        <button onclick="window._naLoadFactSetReports()" class="text-[10px] text-indigo-600 hover:underline ml-auto">刷新</button>
+      </div>
+      <div id="na-factset-reports-list" class="p-4 max-h-60 overflow-y-auto text-xs text-gray-400">点击"刷新"加载</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  LAYER 2: Web Search & Sentiment Scoring                      -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+<div id="na-layer-2" style="${window._naLayer===2?'':'display:none'}">
+
+  <!-- Composite Sentiment Dashboard (v3.0) -->
+  <div class="bg-white border border-gray-200 rounded-xl overflow-hidden mb-4">
+    <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+      <span class="text-sm font-bold text-gray-900 flex items-center gap-2">
+        <i class="fas fa-tachometer-alt text-indigo-500"></i>
+        Sentiment Dashboard — 市场情绪仪表盘 v3.0
+      </span>
+      <button onclick="window._naLoadDashboard()" class="px-3 py-1 bg-indigo-600 text-white text-xs font-semibold rounded-lg hover:bg-indigo-700 transition">
+        <i class="fas fa-sync-alt mr-1"></i>Load Composite
+      </button>
+    </div>
+    <div class="p-4">
+      <div class="grid grid-cols-5 gap-3">
+        <div class="col-span-2 rounded-xl p-4 text-center" style="background:linear-gradient(135deg,#eff6ff,#dbeafe);border:1px solid #bfdbfe">
+          <div class="text-[10px] text-blue-600 uppercase font-bold mb-1">Composite Score</div>
+          <div id="na-dash-score" class="text-3xl font-black text-indigo-600">—</div>
+          <div class="text-[10px] text-gray-400 mt-0.5">-1.0 (Extreme Fear) → +1.0 (Extreme Greed)</div>
+          <div id="na-dash-regime" class="mt-2 text-xs font-bold px-3 py-1 rounded-full inline-block bg-gray-100 text-gray-500">—</div>
+        </div>
+        <div class="rounded-xl p-3 text-center" style="background:#f0fdf4;border:1px solid #bbf7d0">
+          <div class="text-[10px] text-emerald-600 uppercase font-bold mb-1">Bullish</div>
+          <div id="na-dash-bull" class="text-2xl font-black text-emerald-600">—</div>
+        </div>
+        <div class="rounded-xl p-3 text-center" style="background:#fff7ed;border:1px solid #fed7aa">
+          <div class="text-[10px] text-gray-500 uppercase font-bold mb-1">Neutral</div>
+          <div id="na-dash-neut" class="text-2xl font-black text-gray-500">—</div>
+        </div>
+        <div class="rounded-xl p-3 text-center" style="background:#fff1f2;border:1px solid #fecdd3">
+          <div class="text-[10px] text-red-600 uppercase font-bold mb-1">Bearish</div>
+          <div id="na-dash-bear" class="text-2xl font-black text-red-600">—</div>
+        </div>
+      </div>
+      <div id="na-dash-signal" class="mt-3 rounded-lg px-4 py-2 flex items-center gap-3 text-xs bg-gray-50 border border-gray-200" style="display:none">
+        <i class="fas fa-signal text-indigo-500"></i>
+        <span class="font-bold text-gray-700">Position Sizing Signal:</span>
+        <span id="na-dash-signal-text" class="font-mono font-bold">—</span>
+      </div>
+    </div>
+  </div>
 
 <!-- STATS ROW -->
 <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3 mb-4">
@@ -5566,59 +5719,83 @@ async function renderNewsAgent(el) {
   </div>
 </div>
 
-<!-- ══════════════════════════════════════════════════════════════════ -->
-<!--  NEW: FactSet PDF Upload + AI Summary + Web Search                -->
-<!-- ══════════════════════════════════════════════════════════════════ -->
-<div class="mt-5 grid grid-cols-1 lg:grid-cols-2 gap-4">
-
-  <!-- FactSet PDF Upload -->
-  <div class="bg-white border border-gray-200 rounded-xl overflow-hidden">
-    <div class="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
-      <i class="fas fa-file-pdf text-red-500"></i>
-      <span class="text-sm font-bold text-gray-900">FactSet PDF 上传 & AI Summary</span>
-      <span class="text-[9px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full ml-auto">Storage</span>
+<!-- Web Search with Sentiment -->
+<div class="mt-4 bg-white border border-gray-200 rounded-xl overflow-hidden">
+  <div class="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
+    <i class="fas fa-search text-blue-500"></i>
+    <span class="text-sm font-bold text-gray-900">全网搜索 & 情绪评分 Web Search</span>
+    <span class="text-[9px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full ml-auto">Sentiment</span>
+  </div>
+  <div class="p-4">
+    <div class="flex items-center gap-2 mb-3">
+      <input type="text" id="na-websearch-input" placeholder="搜索关键词... e.g. NVDA earnings, AI capex bubble"
+        class="text-xs border border-gray-300 rounded-lg px-3 py-1.5 flex-1 focus:outline-none focus:border-blue-400"
+        onkeydown="if(event.key==='Enter')window._naWebSearch()" />
+      <button onclick="window._naWebSearch()" class="px-4 py-1.5 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 transition">
+        <i class="fas fa-search mr-1"></i>搜索
+      </button>
     </div>
-    <div class="p-4">
-      <div class="flex items-center gap-2 mb-3">
-        <input type="file" id="na-factset-file" accept=".pdf" class="text-xs flex-1" />
-        <button onclick="window._naUploadFactSet()" class="px-4 py-1.5 bg-indigo-600 text-white text-xs font-semibold rounded-lg hover:bg-indigo-700 transition">
-          <i class="fas fa-upload mr-1"></i>解析 & 存储
-        </button>
-      </div>
-      <div id="na-factset-status" class="text-xs text-gray-500">支持FactSet Top News PDF · 自动提取市场摘要、领涨/领跌股、情绪评分</div>
-      
-      <!-- Stored Reports List -->
-      <div class="mt-3 border-t border-gray-100 pt-3">
-        <div class="flex items-center justify-between mb-2">
-          <span class="text-xs font-semibold text-gray-700">已存储报告 Stored Reports</span>
-          <button onclick="window._naLoadFactSetReports()" class="text-[10px] text-indigo-600 hover:underline">刷新</button>
+    <div id="na-websearch-results" class="text-xs text-gray-500">搜索 Google News 并自动评分 sentiment</div>
+  </div>
+</div>
+
+</div><!-- end layer-2 -->
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  LAYER 3: Premium Data Sources                                 -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+<div id="na-layer-3" style="${window._naLayer===3?'':'display:none'}">
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+    <!-- Bloomberg Panel -->
+    <div class="bg-white border border-gray-200 rounded-xl overflow-hidden">
+      <div class="px-4 py-3 border-b border-gray-100">
+        <div class="flex items-center gap-2 mb-2">
+          <i class="fas fa-bolt text-amber-500"></i>
+          <span class="text-sm font-bold text-gray-900">Bloomberg</span>
+          <span class="text-[9px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full ml-auto">RapidAPI</span>
         </div>
-        <div id="na-factset-reports-list" class="max-h-40 overflow-y-auto text-xs text-gray-400">点击"刷新"加载</div>
+        <div class="flex gap-1">
+          <button onclick="window._naLoadBloomberg('market')" class="text-[10px] px-2 py-0.5 rounded bg-blue-100 text-blue-700 hover:bg-blue-200 transition">Market</button>
+          <button onclick="window._naLoadBloomberg('tech')" class="text-[10px] px-2 py-0.5 rounded bg-purple-100 text-purple-700 hover:bg-purple-200 transition">Tech</button>
+          <button onclick="window._naLoadBloomberg('deals')" class="text-[10px] px-2 py-0.5 rounded bg-emerald-100 text-emerald-700 hover:bg-emerald-200 transition">Deals</button>
+        </div>
+      </div>
+      <div id="na-bloomberg-feed" class="p-3 max-h-96 overflow-y-auto text-xs text-gray-400">
+        点击分类按钮加载 Bloomberg 新闻
       </div>
     </div>
-  </div>
 
-  <!-- Web Search with Sentiment -->
-  <div class="bg-white border border-gray-200 rounded-xl overflow-hidden">
-    <div class="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
-      <i class="fas fa-search text-blue-500"></i>
-      <span class="text-sm font-bold text-gray-900">全网搜索 & 情绪评分 Web Search</span>
-      <span class="text-[9px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full ml-auto">Sentiment</span>
-    </div>
-    <div class="p-4">
-      <div class="flex items-center gap-2 mb-3">
-        <input type="text" id="na-websearch-input" placeholder="搜索关键词... e.g. NVDA earnings, AI capex bubble"
-          class="text-xs border border-gray-300 rounded-lg px-3 py-1.5 flex-1 focus:outline-none focus:border-blue-400"
-          onkeydown="if(event.key==='Enter')window._naWebSearch()" />
-        <button onclick="window._naWebSearch()" class="px-4 py-1.5 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 transition">
-          <i class="fas fa-search mr-1"></i>搜索
+    <!-- Reuters Panel -->
+    <div class="bg-white border border-gray-200 rounded-xl overflow-hidden">
+      <div class="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
+        <i class="fas fa-rss text-blue-500"></i>
+        <span class="text-sm font-bold text-gray-900">Reuters</span>
+        <button onclick="window._naLoadReuters()" class="ml-auto px-2 py-0.5 text-[10px] bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition">
+          <i class="fas fa-sync-alt mr-0.5"></i>Load
         </button>
       </div>
-      <div id="na-websearch-results" class="text-xs text-gray-500">搜索 Google News 并自动评分 sentiment (bullish/bearish/neutral)</div>
+      <div id="na-reuters-feed" class="p-3 max-h-96 overflow-y-auto text-xs text-gray-400">
+        点击 Load 加载 Reuters RSS (Business + Technology)
+      </div>
+    </div>
+
+    <!-- Congress.gov Panel -->
+    <div class="bg-white border border-gray-200 rounded-xl overflow-hidden">
+      <div class="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
+        <i class="fas fa-landmark text-amber-600"></i>
+        <span class="text-sm font-bold text-gray-900">Congress.gov</span>
+        <button onclick="window._naLoadCongress()" class="ml-auto px-2 py-0.5 text-[10px] bg-amber-100 text-amber-700 rounded hover:bg-amber-200 transition">
+          <i class="fas fa-sync-alt mr-0.5"></i>Load
+        </button>
+      </div>
+      <div id="na-congress-feed" class="p-3 max-h-96 overflow-y-auto text-xs text-gray-400">
+        Monitoring: AI, Semiconductor, Antitrust, CHIPS Act
+      </div>
     </div>
   </div>
 
-</div>`;
+</div><!-- end layer-3 -->`;
 
   // Auto-compute sentiment from current articles
   setTimeout(() => {
@@ -5629,25 +5806,45 @@ async function renderNewsAgent(el) {
     const avg = scores.length ? (scores.reduce((a,b) => a+b, 0) / scores.length) : 0;
     const label = avg > 0.1 ? 'BULLISH 乐观' : avg < -0.1 ? 'BEARISH 悲观' : 'NEUTRAL 中性';
     const labelColor = avg > 0.1 ? '#10b981' : avg < -0.1 ? '#ef4444' : '#6b7280';
+    // Update existing sentiment dashboard
     const el1 = document.getElementById('na-sent-overall-label');
     const el2 = document.getElementById('na-sent-overall-score');
-    const el3 = document.getElementById('na-sent-bull');
-    const el4 = document.getElementById('na-sent-neut');
-    const el5 = document.getElementById('na-sent-bear');
     if (el1) { el1.textContent = label; el1.style.color = labelColor; }
     if (el2) { el2.textContent = avg.toFixed(3); el2.style.color = labelColor; }
-    if (el3) el3.textContent = bullish;
-    if (el4) el4.textContent = neutral;
-    if (el5) el5.textContent = bearish;
+    // Update both dashboard IDs (Layer 2 composite + existing)
+    ['na-sent-bull','na-dash-bull'].forEach(id => { const e = document.getElementById(id); if (e) e.textContent = bullish; });
+    ['na-sent-neut','na-dash-neut'].forEach(id => { const e = document.getElementById(id); if (e) e.textContent = neutral; });
+    ['na-sent-bear','na-dash-bear'].forEach(id => { const e = document.getElementById(id); if (e) e.textContent = bearish; });
+    // Update composite score
+    const dashScore = document.getElementById('na-dash-score');
+    if (dashScore) { dashScore.textContent = avg.toFixed(3); dashScore.style.color = labelColor; }
+    const dashRegime = document.getElementById('na-dash-regime');
+    if (dashRegime) {
+      const regime = avg > 0.5 ? 'EXTREME GREED' : avg > 0.1 ? 'BULLISH' : avg < -0.5 ? 'EXTREME FEAR' : avg < -0.1 ? 'BEARISH' : 'NEUTRAL';
+      dashRegime.textContent = regime;
+      dashRegime.style.background = avg > 0.1 ? '#dcfce7' : avg < -0.1 ? '#fee2e2' : '#f3f4f6';
+      dashRegime.style.color = labelColor;
+    }
   }, 200);
 
   // Auto-load FactSet reports on page init
   setTimeout(() => window._naLoadFactSetReports && window._naLoadFactSetReports(), 500);
 
   // ── event handlers ────────────────────────────────────────────────
+
+  // Layer tab switching
+  window._naSetLayer = function(layer) {
+    window._naLayer = layer;
+    [1,2,3].forEach(l => {
+      const panel = document.getElementById(`na-layer-${l}`);
+      const tab = document.getElementById(`na-tab-${l}`);
+      if (panel) panel.style.display = l === layer ? '' : 'none';
+      if (tab) tab.className = `flex-1 px-4 py-2 rounded-lg text-xs font-bold transition-all ${l === layer ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`;
+    });
+  };
+
   window._naSetCat = function(cat) {
     window._naCategory = cat;
-    // update buttons
     CATS.forEach(c => {
       const btn = document.getElementById(`na-cat-${c.id}`);
       if (!btn) return;
@@ -5683,17 +5880,14 @@ async function renderNewsAgent(el) {
       const d = r.data;
       const el1 = document.getElementById('na-sent-overall-label');
       const el2 = document.getElementById('na-sent-overall-score');
-      const el3 = document.getElementById('na-sent-bull');
-      const el4 = document.getElementById('na-sent-neut');
-      const el5 = document.getElementById('na-sent-bear');
       const score = d.avgSentimentScore ?? 0;
       const label = d.aggregateSentiment ?? 'neutral';
       const labelColor = label === 'bullish' ? '#10b981' : label === 'bearish' ? '#ef4444' : '#6b7280';
       if (el1) { el1.textContent = label.toUpperCase(); el1.style.color = labelColor; }
       if (el2) { el2.textContent = score.toFixed(3); el2.style.color = labelColor; }
-      if (el3) el3.textContent = d.bullishCount ?? '—';
-      if (el4) el4.textContent = d.neutralCount ?? '—';
-      if (el5) el5.textContent = d.bearishCount ?? '—';
+      ['na-sent-bull','na-dash-bull'].forEach(id => { const e = document.getElementById(id); if (e) e.textContent = d.bullishCount ?? '—'; });
+      ['na-sent-neut','na-dash-neut'].forEach(id => { const e = document.getElementById(id); if (e) e.textContent = d.neutralCount ?? '—'; });
+      ['na-sent-bear','na-dash-bear'].forEach(id => { const e = document.getElementById(id); if (e) e.textContent = d.bearishCount ?? '—'; });
     } catch(e) {}
     if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-sync-alt mr-1"></i>扫描 Scan'; }
   };
@@ -5734,7 +5928,6 @@ async function renderNewsAgent(el) {
         </div>`;
     }).join('');
   };
-
 
 } // end renderNewsAgent
 
@@ -7256,9 +7449,184 @@ window._dcLoadDatasets = async function() {
 };
 
 // ╔══════════════════════════════════════════════════════════════════════════╗
-// ║  FACTSET PDF UPLOAD — News Station Storage Feature (FIXED PROXY)        ║
+// ║  NEWS STATION v3.0 — All External Handlers                              ║
+// ║  Sync Upload | Async Upload | Terminal | Dashboard | Premium Sources     ║
 // ╚══════════════════════════════════════════════════════════════════════════╝
 
+// ── Terminal typing animation ─────────────────────────────────────
+window._termLog = function(text, className) {
+  const terminal = document.getElementById('na-terminal');
+  if (!terminal) return;
+  const line = document.createElement('div');
+  line.className = className || 'text-green-400';
+  terminal.appendChild(line);
+  terminal.scrollTop = terminal.scrollHeight;
+  let i = 0;
+  const type = () => {
+    if (i < text.length) {
+      line.textContent += text[i++];
+      terminal.scrollTop = terminal.scrollHeight;
+      setTimeout(type, 12);
+    }
+  };
+  type();
+};
+
+// ── Drag & Drop file handler ──────────────────────────────────────
+window._naDropFile = function(event) {
+  const files = event.dataTransfer?.files;
+  if (!files || !files[0]) return;
+  const file = files[0];
+  if (!file.name.toLowerCase().endsWith('.pdf')) {
+    window._termLog('$ ERROR: Only PDF files are accepted', 'text-red-400');
+    return;
+  }
+  // Put file into hidden input and trigger async upload
+  const input = document.getElementById('na-factset-file-async');
+  if (input) {
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    input.files = dt.files;
+  }
+  window._naUploadFactSetAsync();
+};
+
+// ── Async PDF Upload + Poll + Terminal Animation ──────────────────
+window._naUploadFactSetAsync = async function() {
+  const input = document.getElementById('na-factset-file-async');
+  if (!input || !input.files[0]) return;
+  const file = input.files[0];
+  const indicator = document.getElementById('na-agent-indicator');
+  if (indicator) { indicator.textContent = 'PROCESSING'; indicator.className = 'ml-auto text-[9px] px-2 py-0.5 rounded-full bg-amber-600 text-white animate-pulse'; }
+
+  window._termLog(`$ Received: ${file.name} (${(file.size/1024).toFixed(0)}KB)`, 'text-cyan-400');
+  window._termLog('$ Uploading to AI Agent for async analysis...', 'text-green-400');
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const resp = await axios.post(`${API}/api/live/news/factset/upload-async`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+    const jobId = resp.data.job_id;
+    if (!jobId) {
+      window._termLog('$ ERROR: No job_id returned', 'text-red-400');
+      if (indicator) { indicator.textContent = 'ERROR'; indicator.className = 'ml-auto text-[9px] px-2 py-0.5 rounded-full bg-red-600 text-white'; }
+      return;
+    }
+    window._termLog(`$ Job queued: ${jobId}`, 'text-yellow-400');
+    window._termLog('$ Polling for results...', 'text-gray-400');
+
+    // Poll for job completion
+    let attempts = 0;
+    const maxAttempts = 60; // 2 minutes max
+    const poll = async () => {
+      attempts++;
+      try {
+        const jr = await axios.get(`${API}/api/live/news/agent/job/${jobId}`);
+        const job = jr.data;
+
+        if (job.status === 'completed') {
+          window._termLog(`$ Analysis complete! Method: ${job.method || 'unknown'}`, 'text-emerald-400');
+          if (indicator) { indicator.textContent = 'DONE'; indicator.className = 'ml-auto text-[9px] px-2 py-0.5 rounded-full bg-emerald-600 text-white'; }
+          window._displayOutputCards(job.result);
+          return;
+        }
+        if (job.status === 'failed') {
+          window._termLog(`$ Job failed: ${job.error || 'unknown error'}`, 'text-red-400');
+          if (indicator) { indicator.textContent = 'FAILED'; indicator.className = 'ml-auto text-[9px] px-2 py-0.5 rounded-full bg-red-600 text-white'; }
+          return;
+        }
+        if (attempts < maxAttempts) {
+          if (attempts % 5 === 0) window._termLog(`$ Still processing... (${attempts * 2}s elapsed)`, 'text-gray-500');
+          setTimeout(poll, 2000);
+        } else {
+          window._termLog('$ Timeout: job did not complete in 2 minutes', 'text-red-400');
+          if (indicator) { indicator.textContent = 'TIMEOUT'; indicator.className = 'ml-auto text-[9px] px-2 py-0.5 rounded-full bg-red-600 text-white'; }
+        }
+      } catch(e) {
+        window._termLog(`$ Poll error: ${e.message}`, 'text-red-400');
+      }
+    };
+    setTimeout(poll, 2000);
+  } catch(e) {
+    window._termLog(`$ Upload failed: ${e.message}`, 'text-red-400');
+    if (indicator) { indicator.textContent = 'ERROR'; indicator.className = 'ml-auto text-[9px] px-2 py-0.5 rounded-full bg-red-600 text-white'; }
+  }
+};
+
+// ── Display AI Output Cards ───────────────────────────────────────
+window._displayOutputCards = function(result) {
+  if (!result) return;
+  const cards = document.getElementById('na-output-cards');
+  if (cards) cards.style.display = '';
+
+  // Core Summary
+  const summaryEl = document.getElementById('na-output-summary');
+  if (summaryEl) summaryEl.innerHTML = (result.core_summary || result.summary || 'No summary available').replace(/\n/g, '<br>');
+
+  // Method badge
+  const methodEl = document.getElementById('na-output-method');
+  if (methodEl) {
+    const method = result.method || 'rule-based';
+    methodEl.textContent = method.toUpperCase();
+    methodEl.className = `ml-auto text-[9px] px-2 py-0.5 rounded-full ${method === 'ai' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-500'}`;
+  }
+
+  // Overall score
+  const scoreEl = document.getElementById('na-output-score');
+  if (scoreEl && typeof result.overall_score === 'number') {
+    const s = result.overall_score;
+    const label = result.overall_label || (s > 0.1 ? 'bullish' : s < -0.1 ? 'bearish' : 'neutral');
+    scoreEl.textContent = `${label.toUpperCase()} ${s > 0 ? '+' : ''}${s.toFixed(3)}`;
+    scoreEl.className = `text-[9px] px-2 py-0.5 rounded-full ${label === 'bullish' ? 'bg-emerald-100 text-emerald-700' : label === 'bearish' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-500'}`;
+  }
+
+  // Impact Matrix
+  const matrixEl = document.getElementById('na-output-matrix');
+  if (matrixEl && result.impact_matrix && result.impact_matrix.length) {
+    matrixEl.innerHTML = result.impact_matrix.map(entry => {
+      const s = entry.score || 0;
+      const color = s > 0.1 ? '#10b981' : s < -0.1 ? '#ef4444' : '#6b7280';
+      const bg = s > 0.1 ? '#f0fdf4' : s < -0.1 ? '#fff1f2' : '#f9fafb';
+      const border = s > 0.1 ? '#bbf7d0' : s < -0.1 ? '#fecdd3' : '#e5e7eb';
+      return `<div class="rounded-lg px-3 py-2 text-center min-w-[80px]" style="background:${bg};border:1px solid ${border}">
+        <div class="font-mono font-bold text-sm text-gray-900">${entry.ticker}</div>
+        <div class="text-lg font-black" style="color:${color}">${s > 0 ? '+' : ''}${s.toFixed(2)}</div>
+        <div class="text-[9px] uppercase font-bold" style="color:${color}">${entry.label || ''}</div>
+        ${entry.reasoning ? `<div class="text-[9px] text-gray-400 mt-0.5 max-w-[120px]">${entry.reasoning}</div>` : ''}
+      </div>`;
+    }).join('');
+  } else if (matrixEl) {
+    matrixEl.innerHTML = '<span class="text-xs text-gray-400">No per-ticker impacts extracted</span>';
+  }
+
+  // Macro Warnings
+  const warningsEl = document.getElementById('na-output-warnings');
+  if (warningsEl && result.macro_warnings && result.macro_warnings.length) {
+    warningsEl.innerHTML = result.macro_warnings.map(w => {
+      const sevColor = w.severity === 'high' ? 'bg-red-100 text-red-700 border-red-300' : w.severity === 'medium' ? 'bg-amber-100 text-amber-700 border-amber-300' : 'bg-blue-100 text-blue-700 border-blue-300';
+      return `<div class="flex items-start gap-3 p-3 rounded-lg border ${sevColor}">
+        <i class="fas fa-exclamation-triangle mt-0.5"></i>
+        <div class="flex-1">
+          <div class="flex items-center gap-2 mb-1">
+            <span class="text-xs font-bold uppercase">${w.type || 'alert'}</span>
+            <span class="text-[9px] px-1.5 py-0.5 rounded-full border font-bold">${(w.severity || 'medium').toUpperCase()}</span>
+          </div>
+          <div class="text-xs">${w.description || ''}</div>
+          ${(w.tickers_affected||[]).length ? `<div class="mt-1 flex gap-1">${w.tickers_affected.map(t => `<span class="text-[9px] bg-white px-1.5 py-0.5 rounded font-mono">${t}</span>`).join('')}</div>` : ''}
+        </div>
+      </div>`;
+    }).join('');
+  } else if (warningsEl) {
+    warningsEl.innerHTML = '<span class="text-xs text-gray-400">No macro warnings detected</span>';
+  }
+
+  window._termLog('$ Output cards rendered successfully', 'text-emerald-400');
+};
+
+// ── Legacy Sync Upload (preserved) ────────────────────────────────
 window._naUploadFactSet = async function() {
   const fileInput = document.getElementById('na-factset-file');
   const statusEl = document.getElementById('na-factset-status');
@@ -7280,12 +7648,12 @@ window._naUploadFactSet = async function() {
       const s = d.summary || {};
       if (statusEl) statusEl.innerHTML = `
         <div class="mt-2 p-3 bg-emerald-50 border border-emerald-200 rounded-lg">
-          <div class="font-bold text-emerald-800 mb-1">✓ 报告解析成功 — Report ID: ${d.reportId}</div>
+          <div class="font-bold text-emerald-800 mb-1">Report ID: ${d.reportId}</div>
           <div class="text-xs text-gray-700 mb-2">${d.filename} · ${(d.fileSize/1024).toFixed(0)}KB · ${d.reportDate}</div>
           <div class="text-xs text-gray-600 mb-2 whitespace-pre-wrap max-h-40 overflow-y-auto">${(s.summary||'').replace(/\n/g,'<br>')}</div>
           <div class="flex gap-3 text-xs">
             <span class="px-2 py-0.5 rounded-full ${s.overallSentiment?.label==='bullish'?'bg-emerald-100 text-emerald-700':s.overallSentiment?.label==='bearish'?'bg-red-100 text-red-700':'bg-gray-100 text-gray-600'}">
-              情绪: ${s.overallSentiment?.label?.toUpperCase()} (${s.overallSentiment?.score})
+              ${s.overallSentiment?.label?.toUpperCase()} (${s.overallSentiment?.score})
             </span>
             <span class="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">${s.tickerCount} tickers</span>
           </div>
@@ -7298,6 +7666,7 @@ window._naUploadFactSet = async function() {
   }
 };
 
+// ── Web Search (preserved) ────────────────────────────────────────
 window._naWebSearch = async function() {
   const input = document.getElementById('na-websearch-input');
   const resultEl = document.getElementById('na-websearch-results');
@@ -7313,9 +7682,9 @@ window._naWebSearch = async function() {
     if (resultEl) resultEl.innerHTML = `
       <div class="mt-2">
         <div class="flex items-center gap-3 mb-2">
-          <span class="text-xs font-bold text-gray-800">${articles.length} 条结果</span>
+          <span class="text-xs font-bold text-gray-800">${articles.length} results</span>
           <span class="text-xs px-2 py-0.5 rounded-full ${sent.label==='bullish'?'bg-emerald-100 text-emerald-700':sent.label==='bearish'?'bg-red-100 text-red-700':'bg-gray-100 text-gray-600'}">
-            情绪: ${sent.label?.toUpperCase()} (${sent.score})
+            ${sent.label?.toUpperCase()} (${sent.score})
           </span>
           <span class="text-[10px] text-gray-400">Bull:${sent.bullishCount} Bear:${sent.bearishCount} Neutral:${sent.neutralCount}</span>
         </div>
@@ -7335,6 +7704,7 @@ window._naWebSearch = async function() {
   }
 };
 
+// ── FactSet Reports (preserved) ───────────────────────────────────
 window._naLoadFactSetReports = async function() {
   const el = document.getElementById('na-factset-reports-list');
   if (!el) return;
@@ -7365,7 +7735,6 @@ window._naViewReport = async function(id) {
     const resp = await axios.get(`${API}/api/live/news/factset/report/${id}`);
     const r = resp.data;
     const summary = r.aiSummary || {};
-    // Show in modal instead of alert
     const modal = document.createElement('div');
     modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center';
     modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
@@ -7375,19 +7744,19 @@ window._naViewReport = async function(id) {
           <h3 class="font-bold text-gray-900 text-base flex items-center gap-2">
             <i class="fas fa-file-pdf text-red-500"></i>${r.filename}
           </h3>
-          <button onclick="this.closest('div[style]').remove()" class="text-gray-400 hover:text-gray-700 text-xl">✕</button>
+          <button onclick="this.closest('div[style]').remove()" class="text-gray-400 hover:text-gray-700 text-xl">&times;</button>
         </div>
         <div class="grid grid-cols-3 gap-3 mb-4">
           <div class="bg-gray-50 rounded-lg p-3 text-center">
-            <div class="text-[10px] text-gray-500">日期</div>
+            <div class="text-[10px] text-gray-500">Date</div>
             <div class="font-bold text-gray-900">${r.reportDate || 'N/A'}</div>
           </div>
           <div class="rounded-lg p-3 text-center" style="background:${(r.sentimentLabel||'neutral')==='bullish'?'#f0fdf4':(r.sentimentLabel||'neutral')==='bearish'?'#fff1f2':'#f9fafb'}">
-            <div class="text-[10px] text-gray-500">情绪评分</div>
+            <div class="text-[10px] text-gray-500">Sentiment</div>
             <div class="font-bold" style="color:${(r.sentimentLabel||'neutral')==='bullish'?'#059669':(r.sentimentLabel||'neutral')==='bearish'?'#dc2626':'#6b7280'}">${(r.sentimentLabel||'neutral').toUpperCase()} (${r.sentimentScore||0})</div>
           </div>
           <div class="bg-blue-50 rounded-lg p-3 text-center">
-            <div class="text-[10px] text-gray-500">提及Ticker</div>
+            <div class="text-[10px] text-gray-500">Tickers</div>
             <div class="font-bold text-blue-700">${(r.tickersMentioned||[]).length}</div>
           </div>
         </div>
@@ -7397,6 +7766,172 @@ window._naViewReport = async function(id) {
     document.body.appendChild(modal);
   } catch(e) {
     alert('Error loading report: ' + e.message);
+  }
+};
+
+// ── Composite Sentiment Dashboard Loader ──────────────────────────
+window._naLoadDashboard = async function() {
+  const btn = document.querySelector('[onclick="window._naLoadDashboard()"]');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Loading...'; }
+  try {
+    const resp = await axios.get(`${API}/api/live/news/sentiment-dashboard`);
+    const d = resp.data;
+    const score = d.composite_score ?? 0;
+    const regime = d.regime || 'neutral';
+    const signal = d.position_signal || 'full';
+    const labelColor = score > 0.1 ? '#10b981' : score < -0.1 ? '#ef4444' : '#6b7280';
+
+    const dashScore = document.getElementById('na-dash-score');
+    if (dashScore) { dashScore.textContent = score.toFixed(3); dashScore.style.color = labelColor; }
+
+    const dashRegime = document.getElementById('na-dash-regime');
+    if (dashRegime) {
+      dashRegime.textContent = regime.toUpperCase().replace('_', ' ');
+      dashRegime.style.background = score > 0.1 ? '#dcfce7' : score < -0.1 ? '#fee2e2' : '#f3f4f6';
+      dashRegime.style.color = labelColor;
+    }
+
+    // Position sizing signal
+    const signalEl = document.getElementById('na-dash-signal');
+    const signalText = document.getElementById('na-dash-signal-text');
+    if (signalEl && signalText) {
+      signalEl.style.display = '';
+      signalText.textContent = signal.toUpperCase();
+      signalText.style.color = signal === 'full' ? '#10b981' : signal === 'reduced' ? '#f59e0b' : '#ef4444';
+    }
+
+    // Update bull/neut/bear counts if available
+    if (d.bullish_count !== undefined) {
+      ['na-sent-bull','na-dash-bull'].forEach(id => { const e = document.getElementById(id); if (e) e.textContent = d.bullish_count; });
+      ['na-sent-neut','na-dash-neut'].forEach(id => { const e = document.getElementById(id); if (e) e.textContent = d.neutral_count; });
+      ['na-sent-bear','na-dash-bear'].forEach(id => { const e = document.getElementById(id); if (e) e.textContent = d.bearish_count; });
+    }
+  } catch(e) {}
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-sync-alt mr-1"></i>Load Composite'; }
+};
+
+// ── Agent Status Check ────────────────────────────────────────────
+window._naCheckAgentStatus = async function() {
+  try {
+    const resp = await axios.get(`${API}/api/live/news/agent/status`);
+    const d = resp.data;
+    const modal = document.createElement('div');
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center';
+    modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+    const cbColor = d.circuit_breaker_open ? 'bg-red-100 text-red-700 border-red-300' : 'bg-emerald-100 text-emerald-700 border-emerald-300';
+    const aiColor = d.ai_available ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700';
+    modal.innerHTML = `
+      <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md mx-4">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="font-bold text-gray-900 text-base flex items-center gap-2">
+            <i class="fas fa-robot text-indigo-500"></i>AI Agent Status
+          </h3>
+          <button onclick="this.closest('div[style]').remove()" class="text-gray-400 hover:text-gray-700 text-xl">&times;</button>
+        </div>
+        <div class="space-y-3">
+          <div class="flex items-center justify-between p-3 rounded-lg border ${cbColor}">
+            <span class="text-xs font-bold">Circuit Breaker</span>
+            <span class="text-xs font-bold">${d.circuit_breaker_open ? 'OPEN (cooldown)' : 'CLOSED (normal)'}</span>
+          </div>
+          <div class="flex items-center justify-between p-3 rounded-lg ${aiColor}">
+            <span class="text-xs font-bold">AI Available</span>
+            <span class="text-xs font-bold">${d.ai_available ? 'YES' : 'NO (rule-based fallback)'}</span>
+          </div>
+          <div class="flex items-center justify-between p-3 rounded-lg bg-gray-50">
+            <span class="text-xs font-bold text-gray-600">Consecutive Failures</span>
+            <span class="text-xs font-mono font-bold text-gray-900">${d.consecutive_failures ?? 0}</span>
+          </div>
+          <div class="flex items-center justify-between p-3 rounded-lg bg-gray-50">
+            <span class="text-xs font-bold text-gray-600">Method</span>
+            <span class="text-xs font-mono font-bold text-gray-900">${d.current_method || 'auto'}</span>
+          </div>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+  } catch(e) {
+    alert('Failed to check agent status: ' + e.message);
+  }
+};
+
+// ── Premium Data Source Loaders (Layer 3) ──────────────────────────
+window._naLoadBloomberg = async function(category) {
+  const feed = document.getElementById('na-bloomberg-feed');
+  if (!feed) return;
+  feed.innerHTML = '<div class="text-center py-4"><i class="fas fa-spinner fa-spin mr-1"></i>Loading Bloomberg...</div>';
+  try {
+    const resp = await axios.get(`${API}/api/live/news/bloomberg?category=${category || 'market'}`);
+    const articles = resp.data.articles || [];
+    if (!articles.length) {
+      feed.innerHTML = '<div class="text-center py-4 text-gray-400">No Bloomberg articles (API key may not be set)</div>';
+      return;
+    }
+    feed.innerHTML = articles.map(a => `
+      <div class="p-2 border-b border-gray-100 hover:bg-gray-50 cursor-pointer" onclick="window.open('${a.url||'#'}','_blank')">
+        <div class="text-xs font-medium text-gray-900 leading-snug">${a.title}</div>
+        <div class="flex items-center gap-2 mt-1">
+          <span class="text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">${a.category||category}</span>
+          <span class="text-[9px] text-gray-400">${a.published_at || ''}</span>
+          ${a.ai_status ? `<span class="text-[9px] px-1.5 py-0.5 rounded ${a.ai_status==='scored'?'bg-emerald-100 text-emerald-600':'bg-gray-100 text-gray-400'}">${a.ai_status}</span>` : ''}
+        </div>
+        ${a.summary ? `<div class="text-[10px] text-gray-500 mt-0.5 line-clamp-1">${a.summary}</div>` : ''}
+      </div>`).join('');
+  } catch(e) {
+    feed.innerHTML = `<div class="text-center py-4 text-red-400 text-xs">${e.message}</div>`;
+  }
+};
+
+window._naLoadReuters = async function() {
+  const feed = document.getElementById('na-reuters-feed');
+  if (!feed) return;
+  feed.innerHTML = '<div class="text-center py-4"><i class="fas fa-spinner fa-spin mr-1"></i>Loading Reuters...</div>';
+  try {
+    const resp = await axios.get(`${API}/api/live/news/reuters`);
+    const articles = resp.data.articles || [];
+    if (!articles.length) {
+      feed.innerHTML = '<div class="text-center py-4 text-gray-400">No Reuters articles available</div>';
+      return;
+    }
+    feed.innerHTML = articles.map(a => `
+      <div class="p-2 border-b border-gray-100 hover:bg-gray-50 cursor-pointer" onclick="window.open('${a.url||'#'}','_blank')">
+        <div class="text-xs font-medium text-gray-900 leading-snug">${a.title}</div>
+        <div class="flex items-center gap-2 mt-1">
+          <span class="text-[9px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">${a.category||'news'}</span>
+          <span class="text-[9px] text-gray-400">${a.published_at || ''}</span>
+        </div>
+      </div>`).join('');
+  } catch(e) {
+    feed.innerHTML = `<div class="text-center py-4 text-red-400 text-xs">${e.message}</div>`;
+  }
+};
+
+window._naLoadCongress = async function() {
+  const feed = document.getElementById('na-congress-feed');
+  if (!feed) return;
+  feed.innerHTML = '<div class="text-center py-4"><i class="fas fa-spinner fa-spin mr-1"></i>Loading Congress bills...</div>';
+  try {
+    const resp = await axios.get(`${API}/api/live/news/congress`);
+    const bills = resp.data.bills || [];
+    if (!bills.length) {
+      feed.innerHTML = '<div class="text-center py-4 text-gray-400">No tracked bills (API key may not be set)</div>';
+      return;
+    }
+    feed.innerHTML = bills.map(b => {
+      const keywords = b.keywords_matched || [];
+      const sevColor = b.relevance_score > 0.7 ? 'bg-red-100 text-red-700' : b.relevance_score > 0.4 ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-500';
+      return `
+      <div class="p-2 border-b border-gray-100 hover:bg-gray-50 cursor-pointer" onclick="window.open('${b.url||'#'}','_blank')">
+        <div class="text-xs font-medium text-gray-900 leading-snug">${b.title}</div>
+        <div class="flex items-center gap-2 mt-1 flex-wrap">
+          <span class="text-[9px] font-mono bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">${b.bill_id}</span>
+          <span class="text-[9px] text-gray-400">${b.introduced_date||''}</span>
+          <span class="text-[9px] text-gray-400">${b.sponsor||''}</span>
+          <span class="text-[9px] px-1.5 py-0.5 rounded ${sevColor}">${(b.relevance_score||0).toFixed(1)}</span>
+        </div>
+        ${keywords.length ? `<div class="mt-1 flex gap-1 flex-wrap">${keywords.map(k=>`<span class="text-[8px] bg-red-50 text-red-600 px-1 py-0.5 rounded">${k}</span>`).join('')}</div>` : ''}
+      </div>`;
+    }).join('');
+  } catch(e) {
+    feed.innerHTML = `<div class="text-center py-4 text-red-400 text-xs">${e.message}</div>`;
   }
 };
 
