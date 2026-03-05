@@ -1,0 +1,59 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--prefix", "webapp"],
+      "port": 5173
+    },
+    {
+      "name": "data-center-3001",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["webapp/data_service/app.py"],
+      "port": 3001
+    },
+    {
+      "name": "screener-3002",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["webapp/screener_service/app.py"],
+      "port": 3002
+    },
+    {
+      "name": "news-3003",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["webapp/news_service/app.py"],
+      "port": 3003
+    },
+    {
+      "name": "deep-analysis-3004",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["webapp/deep_analysis_service/app.py"],
+      "port": 3004
+    },
+    {
+      "name": "ml-engine-3005",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["webapp/ml_service/app.py"],
+      "port": 3005
+    },
+    {
+      "name": "backtest-3006",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["webapp/backtest_service/app.py"],
+      "port": 3006
+    },
+    {
+      "name": "trading-3007",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["webapp/trading_service/app.py"],
+      "port": 3007
+    },
+    {
+      "name": "performance-3008",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["webapp/performance_service/app.py"],
+      "port": 3008
+    }
+  ]
+}
