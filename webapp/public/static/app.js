@@ -5511,35 +5511,36 @@ async function renderNewsAgent(el) {
       </div>
       <div id="na-output-warnings" class="p-4 space-y-2"></div>
     </div>
+    <!-- Trade Signals Card -->
+    <div id="na-output-signals" style="display:none" class="bg-white border border-gray-200 rounded-xl overflow-hidden">
+      <div class="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
+        <i class="fas fa-crosshairs text-emerald-500"></i>
+        <span class="text-sm font-bold text-gray-900">Trade Signals</span>
+        <span class="text-[9px] bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full ml-auto">AI-Generated</span>
+      </div>
+      <div id="na-signals-list" class="p-4 space-y-2"></div>
+    </div>
+    <!-- Questions to Challenge Card -->
+    <div id="na-output-challenges" style="display:none" class="bg-white border border-gray-200 rounded-xl overflow-hidden">
+      <div class="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
+        <i class="fas fa-gavel text-red-500"></i>
+        <span class="text-sm font-bold text-gray-900">Devil's Advocate — Questions to Challenge</span>
+        <span class="text-[9px] bg-red-50 text-red-600 px-2 py-0.5 rounded-full ml-auto">Challenge Consensus</span>
+      </div>
+      <div id="na-challenges-list" class="p-4 space-y-2"></div>
+    </div>
   </div>
 
-  <!-- Sync Upload (legacy) + Stored Reports -->
-  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-    <div class="bg-white border border-gray-200 rounded-xl overflow-hidden">
-      <div class="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
-        <i class="fas fa-file-pdf text-red-500"></i>
-        <span class="text-sm font-bold text-gray-900">同步上传 Sync Upload</span>
-        <span class="text-[9px] bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full ml-auto">Legacy</span>
-      </div>
-      <div class="p-4">
-        <div class="flex items-center gap-2 mb-3">
-          <input type="file" id="na-factset-file" accept=".pdf" class="text-xs flex-1" />
-          <button onclick="window._naUploadFactSet()" class="px-4 py-1.5 bg-gray-600 text-white text-xs font-semibold rounded-lg hover:bg-gray-700 transition">
-            <i class="fas fa-upload mr-1"></i>同步解析
-          </button>
-        </div>
-        <div id="na-factset-status" class="text-xs text-gray-500">同步模式: 阻塞等待结果 (无AI Agent)</div>
-      </div>
+  <!-- Stored Reports -->
+  <div class="bg-white border border-gray-200 rounded-xl overflow-hidden mt-4">
+    <div class="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
+      <i class="fas fa-database text-emerald-500"></i>
+      <span class="text-sm font-bold text-gray-900">已存储报告 Stored Reports</span>
+      <button onclick="window._naLoadFactSetReports()" class="text-[10px] text-indigo-600 hover:underline ml-auto"><i class="fas fa-sync-alt mr-1"></i>刷新</button>
     </div>
-    <div class="bg-white border border-gray-200 rounded-xl overflow-hidden">
-      <div class="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
-        <i class="fas fa-database text-emerald-500"></i>
-        <span class="text-sm font-bold text-gray-900">已存储报告 Stored Reports</span>
-        <button onclick="window._naLoadFactSetReports()" class="text-[10px] text-indigo-600 hover:underline ml-auto">刷新</button>
-      </div>
-      <div id="na-factset-reports-list" class="p-4 max-h-60 overflow-y-auto text-xs text-gray-400">点击"刷新"加载</div>
-    </div>
+    <div id="na-factset-reports-list" class="p-4 max-h-60 overflow-y-auto text-xs text-gray-400">点击"刷新"加载</div>
   </div>
+
 </div>
 
 <!-- ══════════════════════════════════════════════════════════════ -->
@@ -5584,33 +5585,13 @@ async function renderNewsAgent(el) {
         <span class="font-bold text-gray-700">Position Sizing Signal:</span>
         <span id="na-dash-signal-text" class="font-mono font-bold">—</span>
       </div>
+      <div class="mt-2 rounded-lg px-4 py-1.5 flex items-center gap-2 text-[10px] bg-amber-50 border border-amber-200">
+        <i class="fas fa-clock text-amber-500"></i>
+        <span class="text-amber-700 font-medium">VIX Proxy: <span class="font-bold">Pending</span> — integrate from Station 3001 <code class="bg-amber-100 px-1 rounded">/api/yf/macro</code></span>
+      </div>
     </div>
   </div>
 
-<!-- STATS ROW -->
-<div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3 mb-4">
-  ${CATS.filter(c=>c.id!=='all').map(c => {
-    const cnt = articles.filter(a=>a.category===c.id).length;
-    return `<div class="bg-white border border-gray-200 rounded-xl p-3 cursor-pointer hover:border-indigo-400 transition-all text-center" onclick="window._naSetCat('${c.id}')">
-      <i class="${c.icon} text-${c.color}-500 text-lg mb-1"></i>
-      <div class="text-lg font-bold text-gray-900">${cnt}</div>
-      <div class="text-[10px] text-gray-500">${c.label}</div>
-    </div>`;
-  }).join('')}
-</div>
-
-<!-- FILTER BAR -->
-<div class="bg-white border border-gray-200 rounded-xl p-3 mb-4 flex flex-wrap items-center gap-2">
-  <span class="text-xs text-gray-500 font-medium mr-1">分类:</span>
-  ${CATS.map(c=>`<button id="na-cat-${c.id}" onclick="window._naSetCat('${c.id}')"
-    class="text-xs px-3 py-1 rounded-full border transition-all ${catBtnCls(c.id)}">${c.label}</button>`).join('')}
-  <div class="ml-auto flex items-center gap-2">
-    <input id="na-search" type="text" placeholder="搜索标题/内容..." value="${window._naSearch}"
-      onkeyup="window._naDoSearch(this.value)"
-      class="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-48 focus:outline-none focus:border-indigo-400" />
-    ${window._naSearch ? `<button onclick="window._naDoSearch('')" class="text-xs text-gray-400 hover:text-gray-700">✕</button>` : ''}
-  </div>
-</div>
 
 <!-- SOURCE INFO BAR -->
 <div class="mb-3 rounded-lg px-4 py-2 flex flex-wrap items-center gap-3 text-[11px]" style="background:#eff6ff;border:1px solid #bfdbfe">
@@ -5629,6 +5610,7 @@ async function renderNewsAgent(el) {
     <span class="text-sm font-bold text-gray-900 flex items-center gap-2">
       <i class="fas fa-list text-blue-500"></i>
       新闻列表 <span id="na-count" class="text-xs font-normal text-gray-500 ml-1">${getFiltered().length} 条</span>
+      <span class="text-[10px] text-indigo-400 ml-2 font-medium">大盘监控 · SPX / NDX / DJI / VIX · 自动刷新</span>
     </span>
     <span class="text-[10px] text-gray-400">点击行可打开原文</span>
   </div>
@@ -5666,76 +5648,25 @@ async function renderNewsAgent(el) {
   </div>`).join('')}
 </div>
 
-<!-- ══════════════════════════════════════════════════════════════════ -->
-<!--  SENTIMENT SCORE DASHBOARD                                         -->
-<!-- ══════════════════════════════════════════════════════════════════ -->
-<div class="mt-5 bg-white border border-gray-200 rounded-xl overflow-hidden">
-  <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-    <span class="text-sm font-bold text-gray-900 flex items-center gap-2">
-      <i class="fas fa-thermometer-half text-indigo-500"></i>
-      市场情绪总览 Sentiment Dashboard
-    </span>
-    <button onclick="window._naRunSentimentScan()" class="px-3 py-1 bg-indigo-600 text-white text-xs font-semibold rounded-lg hover:bg-indigo-700 transition">
-      <i class="fas fa-sync-alt mr-1"></i>扫描 Scan
-    </button>
-  </div>
-  <div class="p-4">
-    <!-- Overall Aggregate -->
-    <div class="grid grid-cols-4 gap-3 mb-4">
-      <div class="col-span-1 rounded-xl p-3 text-center" style="background:linear-gradient(135deg,#eff6ff,#dbeafe);border:1px solid #bfdbfe">
-        <div class="text-[10px] text-blue-600 uppercase font-bold mb-1">综合情绪</div>
-        <div id="na-sent-overall-label" class="text-lg font-bold text-gray-900">—</div>
-        <div id="na-sent-overall-score" class="text-2xl font-black mt-1 text-indigo-600">—</div>
-        <div class="text-[10px] text-gray-400 mt-0.5">-1.0 (极度悲观) → +1.0 (极度乐观)</div>
-      </div>
-      <div class="col-span-3 grid grid-cols-3 gap-3">
-        <div class="rounded-xl p-3 text-center" style="background:#f0fdf4;border:1px solid #bbf7d0">
-          <div class="text-[10px] text-emerald-600 uppercase font-bold mb-1">📈 看多 Bullish</div>
-          <div id="na-sent-bull" class="text-3xl font-black text-emerald-600">—</div>
-          <div class="text-[10px] text-gray-400 mt-1">条 articles</div>
-        </div>
-        <div class="rounded-xl p-3 text-center" style="background:#fff7ed;border:1px solid #fed7aa">
-          <div class="text-[10px] text-gray-500 uppercase font-bold mb-1">😐 中性 Neutral</div>
-          <div id="na-sent-neut" class="text-3xl font-black text-gray-500">—</div>
-          <div class="text-[10px] text-gray-400 mt-1">条 articles</div>
-        </div>
-        <div class="rounded-xl p-3 text-center" style="background:#fff1f2;border:1px solid #fecdd3">
-          <div class="text-[10px] text-red-600 uppercase font-bold mb-1">📉 看空 Bearish</div>
-          <div id="na-sent-bear" class="text-3xl font-black text-red-600">—</div>
-          <div class="text-[10px] text-gray-400 mt-1">条 articles</div>
-        </div>
-      </div>
-    </div>
-    <!-- Per-ticker Sentiment -->
-    <div class="mb-2 flex items-center gap-2">
-      <span class="text-xs text-gray-600 font-medium">个股情绪扫描:</span>
-      <input type="text" id="na-sent-tickers" placeholder="e.g. AAPL,NVDA,TSLA,META"
-        class="flex-1 text-xs border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:border-indigo-400" />
-      <button onclick="window._naTickerSentiment()" class="px-4 py-1.5 bg-emerald-600 text-white text-xs font-semibold rounded-lg hover:bg-emerald-700 transition">
-        <i class="fas fa-search mr-1"></i>扫描
-      </button>
-    </div>
-    <div id="na-ticker-sentiment-results" class="grid grid-cols-2 sm:grid-cols-4 gap-2"></div>
-  </div>
-</div>
 
 <!-- Web Search with Sentiment -->
 <div class="mt-4 bg-white border border-gray-200 rounded-xl overflow-hidden">
   <div class="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
     <i class="fas fa-search text-blue-500"></i>
-    <span class="text-sm font-bold text-gray-900">全网搜索 & 情绪评分 Web Search</span>
-    <span class="text-[9px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full ml-auto">Sentiment</span>
+    <span class="text-sm font-bold text-gray-900">全网搜索 Web Search</span>
+    <span class="text-[9px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full ml-2">Ad-hoc</span>
+    <span class="text-[10px] text-gray-400 ml-auto">Ad-hoc 查询 · 结果不计入情绪历史</span>
   </div>
   <div class="p-4">
     <div class="flex items-center gap-2 mb-3">
-      <input type="text" id="na-websearch-input" placeholder="搜索关键词... e.g. NVDA earnings, AI capex bubble"
+      <input type="text" id="na-websearch-input" placeholder="临时查询: NVDA earnings, Fed rate decision, AI capex outlook..."
         class="text-xs border border-gray-300 rounded-lg px-3 py-1.5 flex-1 focus:outline-none focus:border-blue-400"
         onkeydown="if(event.key==='Enter')window._naWebSearch()" />
       <button onclick="window._naWebSearch()" class="px-4 py-1.5 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 transition">
         <i class="fas fa-search mr-1"></i>搜索
       </button>
     </div>
-    <div id="na-websearch-results" class="text-xs text-gray-500">搜索 Google News 并自动评分 sentiment</div>
+    <div id="na-websearch-results" class="text-xs text-gray-500">搜索 Google News 并即时评分，结果不计入 Dashboard 统计</div>
   </div>
 </div>
 
@@ -5841,6 +5772,17 @@ async function renderNewsAgent(el) {
       if (panel) panel.style.display = l === layer ? '' : 'none';
       if (tab) tab.className = `flex-1 px-4 py-2 rounded-lg text-xs font-bold transition-all ${l === layer ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`;
     });
+    // Auto-load Layer 3 sources when switching to the tab
+    if (layer === 3) {
+      const bloombergFeed = document.getElementById('na-bloomberg-feed');
+      const reutersFeed   = document.getElementById('na-reuters-feed');
+      const congressFeed  = document.getElementById('na-congress-feed');
+      // Auto-load if feed still showing initial placeholder text (not already loaded/loading)
+      const isPlaceholder = el => el && !el.querySelector('.border-b') && !el.querySelector('.fa-spinner');
+      if (isPlaceholder(bloombergFeed)) window._naLoadBloomberg('market');
+      if (isPlaceholder(reutersFeed))   window._naLoadReuters();
+      if (isPlaceholder(congressFeed))  window._naLoadCongress();
+    }
   };
 
   window._naSetCat = function(cat) {
@@ -7509,7 +7451,7 @@ window._naUploadFactSetAsync = async function() {
     const resp = await axios.post(`${API}/api/live/news/factset/upload-async`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     });
-    const jobId = resp.data.job_id;
+    const jobId = resp.data.jobId || resp.data.job_id;
     if (!jobId) {
       window._termLog('$ ERROR: No job_id returned', 'text-red-400');
       if (indicator) { indicator.textContent = 'ERROR'; indicator.className = 'ml-auto text-[9px] px-2 py-0.5 rounded-full bg-red-600 text-white'; }
@@ -7621,6 +7563,52 @@ window._displayOutputCards = function(result) {
     }).join('');
   } else if (warningsEl) {
     warningsEl.innerHTML = '<span class="text-xs text-gray-400">No macro warnings detected</span>';
+  }
+
+  // ── Trade Signals ──
+  const signalsEl = document.getElementById('na-output-signals');
+  const signalsListEl = document.getElementById('na-signals-list');
+  if (signalsEl && signalsListEl && result.trade_signals && result.trade_signals.length > 0) {
+    signalsEl.style.display = '';
+    signalsListEl.innerHTML = result.trade_signals.map(s => {
+      const dirColor = s.direction === 'long' ? 'bg-emerald-100 text-emerald-700' : s.direction === 'short' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600';
+      const convColor = s.conviction === 'high' ? 'bg-purple-100 text-purple-700' : s.conviction === 'medium' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500';
+      return `<div class="flex items-center gap-3 p-3 rounded-lg border border-gray-200 bg-gray-50">
+        <span class="font-mono font-bold text-sm text-gray-900 min-w-[50px]">${s.ticker}</span>
+        <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${dirColor}">${s.direction}</span>
+        <span class="text-[9px] px-1.5 py-0.5 rounded-full ${convColor}">${s.conviction}</span>
+        <span class="text-xs text-gray-600 flex-1">${s.reasoning || ''}</span>
+        ${s.catalyst ? `<span class="text-[9px] text-gray-400 hidden sm:inline"><i class="fas fa-bolt mr-0.5"></i>${s.catalyst}</span>` : ''}
+        <span class="text-[9px] text-gray-400 ml-auto whitespace-nowrap">${s.timeframe || '1-3d'}</span>
+      </div>`;
+    }).join('');
+  } else if (signalsEl) {
+    signalsEl.style.display = 'none';
+  }
+
+  // ── Questions to Challenge ──
+  const challengesEl = document.getElementById('na-output-challenges');
+  const challengesListEl = document.getElementById('na-challenges-list');
+  if (challengesEl && challengesListEl && result.questions_to_challenge && result.questions_to_challenge.length > 0) {
+    challengesEl.style.display = '';
+    challengesListEl.innerHTML = result.questions_to_challenge.map(q => {
+      const sevBorder = q.severity === 'high' ? 'border-red-500 bg-red-50' : q.severity === 'medium' ? 'border-amber-400 bg-amber-50' : 'border-blue-300 bg-blue-50';
+      return `<div class="p-3 rounded-lg border-l-4 ${sevBorder}">
+        <div class="font-bold text-sm text-gray-800"><i class="fas fa-question-circle mr-1.5 text-gray-400"></i>${q.question}</div>
+        ${q.target ? `<div class="text-[10px] text-gray-500 mt-1 ml-5">Challenges: <span class="font-medium">${q.target}</span></div>` : ''}
+      </div>`;
+    }).join('');
+  } else if (challengesEl) {
+    challengesEl.style.display = 'none';
+  }
+
+  // ── Data Quality Badge (terminal log) ──
+  const dq = result.data_quality_score;
+  if (typeof dq === 'number') {
+    const dqPct = (dq * 100).toFixed(0);
+    const dqColor = dq < 0.5 ? 'text-amber-400' : 'text-cyan-400';
+    const dqSuffix = dq < 0.5 ? ' ⚠ LOW — confidence reduced' : ' ✓';
+    window._termLog(`$ Data quality: ${dqPct}%${dqSuffix}`, dqColor);
   }
 
   window._termLog('$ Output cards rendered successfully', 'text-emerald-400');

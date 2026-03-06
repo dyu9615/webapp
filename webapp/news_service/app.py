@@ -25,6 +25,7 @@ import json
 import sqlite3
 import threading
 import uuid
+import ssl
 import xml.etree.ElementTree as ET
 import urllib.request
 from datetime import datetime
@@ -39,6 +40,11 @@ app = Flask(__name__)
 CORS(app)
 
 _start_time = time.time()
+
+# SSL context for macOS — avoids CERTIFICATE_VERIFY_FAILED on urllib HTTPS calls
+_SSL_CTX = ssl.create_default_context()
+_SSL_CTX.check_hostname = False
+_SSL_CTX.verify_mode = ssl.CERT_NONE
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Database Setup — original tables + async job queue + premium cache
@@ -90,11 +96,110 @@ def _init_db():
         fetched_at TEXT DEFAULT (datetime('now')),
         expires_at TEXT NOT NULL
     )''')
+    # ── Layer 1C→1D: Structured parse output (regex-extracted, no LLM) ──
+    cur.execute('''CREATE TABLE IF NOT EXISTS factset_structured (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        report_id INTEGER,
+        job_id TEXT,
+        report_date TEXT,
+        structured_json TEXT NOT NULL,
+        data_quality_score REAL DEFAULT 0.0,
+        extraction_failures TEXT,
+        all_tickers TEXT,
+        created_at TEXT DEFAULT (datetime('now'))
+    )''')
+    # ── Layer 1B→1D: LLM analysis results ──
+    cur.execute('''CREATE TABLE IF NOT EXISTS factset_analysis (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        report_id INTEGER,
+        job_id TEXT,
+        report_date TEXT,
+        trade_signals TEXT,
+        questions_to_challenge TEXT,
+        overall_score REAL,
+        overall_label TEXT,
+        confidence REAL,
+        method TEXT,
+        prompt_version TEXT DEFAULT 'v1.0',
+        created_at TEXT DEFAULT (datetime('now'))
+    )''')
+    # ── Layer 1D: Ticker-level history for cross-day context ──
+    cur.execute('''CREATE TABLE IF NOT EXISTS factset_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ticker TEXT NOT NULL,
+        report_date TEXT,
+        appearance_section TEXT,
+        change_pct REAL,
+        score REAL,
+        label TEXT,
+        context_summary TEXT,
+        created_at TEXT DEFAULT (datetime('now'))
+    )''')
+    # ── Accuracy tracking for V1 validation (future use) ──
+    cur.execute('''CREATE TABLE IF NOT EXISTS agent_accuracy_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        job_id TEXT,
+        ticker TEXT,
+        signal_direction TEXT,
+        signal_date TEXT,
+        actual_return_3d REAL,
+        correct INTEGER,
+        annotated_at TEXT,
+        created_at TEXT DEFAULT (datetime('now'))
+    )''')
     conn.commit()
     conn.close()
 
 
 _init_db()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# L2-01 (P0): Warmup sentiment on startup — fixes cold-start empty dashboard
+# ══════════════════════════════════════════════════════════════════════════════
+
+_WARMUP_TICKERS = ['SPY', 'QQQ', 'AAPL', 'MSFT', 'NVDA', 'AMZN', 'META', 'GOOGL']
+
+
+def _warmup_sentiment():
+    """Background thread: auto-scan key tickers 5s after startup to populate sentiment_history.
+
+    Without this, the Sentiment Dashboard shows 0.000 / neutral on cold start because
+    sentiment_history table is empty until a user manually triggers a ticker scan.
+    """
+    time.sleep(5)  # Wait for Flask to finish binding
+    print(f"[Warmup] Starting sentiment warmup for {len(_WARMUP_TICKERS)} tickers...")
+    success = 0
+    for ticker in _WARMUP_TICKERS:
+        try:
+            headlines = _parse_rss(
+                f'https://feeds.finance.yahoo.com/rss/2.0/headline?s={ticker}&region=US&lang=en-US',
+                'Yahoo Finance', ticker, limit=10
+            )
+            google_headlines = _parse_rss(
+                f'https://news.google.com/rss/search?q={ticker}+stock&hl=en-US&gl=US&ceid=US:en',
+                'Google News', ticker, limit=5
+            )
+            headlines.extend(google_headlines)
+
+            scores = [h['sentimentScore'] for h in headlines if h['sentimentScore'] != 0]
+            avg_score = round(sum(scores) / len(scores), 3) if scores else 0.0
+            bull_ct = sum(1 for h in headlines if h['sentiment'] == 'bullish')
+            bear_ct = sum(1 for h in headlines if h['sentiment'] == 'bearish')
+            neut_ct = sum(1 for h in headlines if h['sentiment'] == 'neutral')
+            agg_label = 'bullish' if avg_score > 0.15 else 'bearish' if avg_score < -0.15 else 'neutral'
+
+            _save_sentiment_history(ticker, avg_score, agg_label, len(headlines), bull_ct, bear_ct, neut_ct, source='warmup')
+            success += 1
+            print(f"[Warmup] {ticker}: {agg_label} ({avg_score:+.3f}) — {len(headlines)} headlines")
+        except Exception as e:
+            print(f"[Warmup] {ticker} failed: {e}")
+    print(f"[Warmup] Complete: {success}/{len(_WARMUP_TICKERS)} tickers scanned")
+
+
+# Start warmup thread (daemon=True so it doesn't block shutdown)
+_warmup_thread = threading.Thread(target=_warmup_sentiment, daemon=True, name='sentiment-warmup')
+_warmup_thread.start()
 
 # Initialize premium data tables
 try:
@@ -184,7 +289,7 @@ def _parse_rss(url, source_name, ticker=None, limit=10):
     headlines = []
     try:
         req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=8) as r:
+        with urllib.request.urlopen(req, timeout=8, context=_SSL_CTX) as r:
             root = ET.fromstring(r.read())
         channel = root.find('channel') or root
         for item in channel.findall('item')[:limit]:
@@ -433,10 +538,16 @@ def _save_sentiment_history(ticker, score, label, headline_count, bullish, beari
 # AI Analysis — LLM with structured output (Bug 2 Fix)
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _ai_analyze_pdf(text: str) -> dict:
-    """Call LLM API with structured JSON output for PDF analysis.
+def _ai_analyze_pdf(text: str, structured: dict = None, history: dict = None) -> dict:
+    """Enhanced LLM analysis with structured data + history context (Layer 1B).
 
-    Bug 2 Fix:
+    v4.0 — FactSet-specific prompt with:
+      - Pre-parsed structured data (T1: numbers from parsing, not LLM memory)
+      - History context for cross-day awareness (T4: memory)
+      - New output fields: trade_signals, questions_to_challenge
+      - 6000 char narrative window (up from 4000)
+
+    Bug 2 Fix (retained):
       - temperature=0 for deterministic output
       - response_format=json_object for structured JSON
       - Pydantic validation rejects malformed AI output
@@ -447,35 +558,103 @@ def _ai_analyze_pdf(text: str) -> dict:
     api_key = os.environ.get('OPENAI_API_KEY', '')
     if not api_key:
         # No API key configured — silent fallback to rule-based
-        return _generate_factset_summary(text)
+        result = _generate_factset_summary(text)
+        result['trade_signals'] = []
+        result['questions_to_challenge'] = []
+        result['data_quality_score'] = 0.5
+        return result
 
-    prompt = """Analyze this FactSet financial report and return ONLY a JSON object with these exact fields:
-{
-  "core_summary": "3-sentence digest of the report covering market direction, key movers, and outlook",
-  "impact_matrix": [{"ticker": "NVDA", "score": 0.8, "label": "bullish", "reasoning": "Blackwell capacity expansion"}],
-  "macro_warnings": [{"type": "tariff", "severity": "high", "description": "New semiconductor export controls", "tickers_affected": ["NVDA","AMD"]}],
+    # ── Build FactSet-specific prompt with pre-parsed data ──
+    system_msg = (
+        "You are a FactSet Top News analyst. You receive pre-parsed structured data "
+        "from a FactSet daily report. All numbers (index returns, ticker % changes, "
+        "estimates) are already extracted by regex. DO NOT recall or correct any numbers "
+        "from your training data. Use ONLY the numbers provided in the structured data sections. "
+        "Return ONLY valid JSON, no markdown, no commentary."
+    )
+
+    # Build structured data sections for prompt
+    structured_sections = ""
+    if structured:
+        syn = structured.get('synopsis')
+        if syn:
+            structured_sections += f"\n=== MARKET SYNOPSIS (parsed) ===\n"
+            structured_sections += json.dumps(syn, indent=2)[:800]
+        gainers = structured.get('gainers', [])
+        if gainers:
+            structured_sections += f"\n\n=== NOTABLE GAINERS ({len(gainers)} parsed) ===\n"
+            structured_sections += json.dumps(gainers[:10], indent=2)[:1200]
+        decliners = structured.get('decliners', [])
+        if decliners:
+            structured_sections += f"\n\n=== NOTABLE DECLINERS ({len(decliners)} parsed) ===\n"
+            structured_sections += json.dumps(decliners[:10], indent=2)[:1200]
+        estimates = structured.get('estimate_revisions', [])
+        if estimates:
+            structured_sections += f"\n\n=== ESTIMATE REVISIONS ({len(estimates)} parsed) ===\n"
+            structured_sections += json.dumps(estimates[:10], indent=2)[:1000]
+        sectors = structured.get('sector_snapshots', [])
+        if sectors:
+            structured_sections += f"\n\n=== SECTOR SNAPSHOTS ({len(sectors)} parsed) ===\n"
+            structured_sections += json.dumps(sectors, indent=2)[:800]
+        stories = structured.get('top_stories', [])
+        if stories:
+            structured_sections += f"\n\n=== TOP STORIES ({len(stories)} parsed) ===\n"
+            structured_sections += json.dumps(stories[:5], indent=2)[:1000]
+
+    # Build history context section
+    history_section = ""
+    if history:
+        history_section = "\n\n=== TICKER HISTORY (last 3 days) ===\n"
+        for ticker, entries in list(history.items())[:15]:
+            history_section += f"{ticker}: "
+            for e in entries[:3]:
+                history_section += (
+                    f"[{e.get('date','')} {e.get('section','')} "
+                    f"{e.get('change_pct','n/a')}% — {e.get('context','')[:80]}] "
+                )
+            history_section += "\n"
+
+    prompt = f"""{structured_sections}
+{history_section}
+
+=== FULL TEXT (for narrative context only — do NOT extract numbers from here) ===
+{text[:6000]}
+
+Return JSON with these exact fields:
+{{
+  "core_summary": "3-sentence digest: market direction, key movers, biggest risk",
+  "impact_matrix": [{{"ticker":"NVDA","score":0.8,"label":"bullish","reasoning":"Blackwell capacity"}}],
+  "macro_warnings": [{{"type":"tariff","severity":"high","description":"Export controls","tickers_affected":["NVDA"]}}],
+  "trade_signals": [
+    {{"ticker":"NVDA","direction":"long","conviction":"high",
+     "reasoning":"max 200 chars","catalyst":"what triggers","timeframe":"1-3 days"}}
+  ],
+  "questions_to_challenge": [
+    {{"question":"Devil's advocate challenge","target":"assumption being challenged","severity":"medium"}}
+  ],
   "overall_score": 0.3,
   "overall_label": "bullish",
-  "confidence": 0.85
-}
+  "confidence": 0.85,
+  "data_quality_score": 0.8
+}}
 
 Rules:
-- Scores MUST be between -1.0 and 1.0
-- Labels MUST be exactly "bullish", "bearish", or "neutral"
-- core_summary MUST be exactly 3 sentences
+- trade_signals: 3-5 actionable signals based on today's report. Focus on CHANGES (earnings beats, estimate revisions, sector rotation).
+- questions_to_challenge: 3-5 Devil's Advocate questions. Challenge the CONSENSUS narrative. What could go wrong? What is the market ignoring?
+- If history shows a ticker appeared as a gainer/decliner recently, reference that in reasoning.
+- Scores MUST be between -1.0 and 1.0. Labels MUST be exactly "bullish", "bearish", or "neutral".
+- direction MUST be "long", "short", or "avoid". conviction MUST be "high", "medium", or "low".
+- confidence should reflect data quality: if structured data is sparse, lower your confidence.
+- type MUST be one of: "rate", "tariff", "policy", "geopolitical"
 - severity MUST be "low", "medium", or "high"
-- type MUST be "rate", "tariff", "policy", or "geopolitical"
-- Return ONLY valid JSON, no markdown, no commentary
-
-Report text (first 4000 chars):
-""" + text[:4000]
+- Return ONLY valid JSON, no markdown, no commentary"""
 
     payload = json.dumps({
         'model': os.environ.get('AI_MODEL', 'gpt-4o-mini'),
         'temperature': 0,
         'response_format': {'type': 'json_object'},
         'messages': [
-            {'role': 'system', 'content': 'You are a financial analyst. Return only valid JSON matching the exact schema requested.'},
+            {'role': 'system', 'content': system_msg},
             {'role': 'user', 'content': prompt},
         ],
     }).encode('utf-8')
@@ -486,7 +665,7 @@ Report text (first 4000 chars):
         'Content-Type': 'application/json',
     })
 
-    with urllib.request.urlopen(req, timeout=30) as resp:
+    with urllib.request.urlopen(req, timeout=45, context=_SSL_CTX) as resp:
         body = json.loads(resp.read())
 
     raw_content = body['choices'][0]['message']['content']
@@ -504,9 +683,12 @@ Report text (first 4000 chars):
             'core_summary': parsed.get('core_summary', 'AI analysis completed but validation failed.'),
             'impact_matrix': [],
             'macro_warnings': [],
+            'trade_signals': parsed.get('trade_signals', []),
+            'questions_to_challenge': parsed.get('questions_to_challenge', []),
             'overall_score': max(-1.0, min(1.0, float(parsed.get('overall_score', 0)))),
             'overall_label': parsed.get('overall_label', 'neutral'),
             'confidence': 0.4,
+            'data_quality_score': float(parsed.get('data_quality_score', 0.5)),
         }
 
     # Add legacy fields for backward compatibility
@@ -527,14 +709,155 @@ Report text (first 4000 chars):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Background Worker — async PDF processing (Bug 3 Fix)
+# Background Worker — async PDF processing (Bug 3 Fix + Layer 1 4-Step Pipeline)
 # ══════════════════════════════════════════════════════════════════════════════
 
+
+def _get_ticker_history(tickers, days=3):
+    """Fetch recent appearances from factset_history for prompt context (Layer 1D→1B).
+
+    Returns: {ticker: [{date, section, change_pct, context_summary}, ...]}
+    """
+    if not tickers:
+        return {}
+    history = {}
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cur = conn.cursor()
+        placeholders = ','.join('?' for _ in tickers)
+        cur.execute(
+            f"""SELECT ticker, report_date, appearance_section, change_pct, context_summary
+                FROM factset_history
+                WHERE ticker IN ({placeholders})
+                  AND created_at > datetime('now', '-{days} days')
+                ORDER BY created_at DESC""",
+            tickers
+        )
+        for row in cur.fetchall():
+            t = row[0]
+            if t not in history:
+                history[t] = []
+            history[t].append({
+                'date': row[1] or '',
+                'section': row[2] or '',
+                'change_pct': row[3],
+                'context': row[4] or '',
+            })
+        conn.close()
+    except Exception as e:
+        print(f"[History] Fetch error: {e}")
+    return history
+
+
+def _store_structured(job_id, structured_dict, quality):
+    """Write structured parse output to factset_structured table (Layer 1C→1D)."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cur = conn.cursor()
+        cur.execute(
+            """INSERT INTO factset_structured
+               (job_id, report_date, structured_json, data_quality_score, extraction_failures, all_tickers)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (
+                job_id,
+                structured_dict.get('report_date', ''),
+                json.dumps(structured_dict),
+                quality,
+                json.dumps(structured_dict.get('extraction_failures', [])),
+                json.dumps(structured_dict.get('all_tickers', [])),
+            )
+        )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[Store] factset_structured error: {e}")
+
+
+def _store_analysis(job_id, result, method):
+    """Write LLM analysis results to factset_analysis table (Layer 1B→1D)."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cur = conn.cursor()
+        cur.execute(
+            """INSERT INTO factset_analysis
+               (job_id, report_date, trade_signals, questions_to_challenge,
+                overall_score, overall_label, confidence, method)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                job_id,
+                result.get('report_date', ''),
+                json.dumps(result.get('trade_signals', [])),
+                json.dumps(result.get('questions_to_challenge', [])),
+                result.get('overall_score', 0.0),
+                result.get('overall_label', 'neutral'),
+                result.get('confidence', 0.5),
+                method,
+            )
+        )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[Store] factset_analysis error: {e}")
+
+
+def _update_ticker_history(structured_dict):
+    """Write each ticker appearance to factset_history for future cross-day context (Layer 1D)."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cur = conn.cursor()
+        report_date = structured_dict.get('report_date', '')
+
+        # Gainers
+        for g in structured_dict.get('gainers', []):
+            cur.execute(
+                """INSERT INTO factset_history (ticker, report_date, appearance_section, change_pct, context_summary)
+                   VALUES (?, ?, 'gainer', ?, ?)""",
+                (g.get('ticker', ''), report_date, g.get('change_pct', 0.0),
+                 g.get('reason', '')[:200])
+            )
+
+        # Decliners
+        for d in structured_dict.get('decliners', []):
+            cur.execute(
+                """INSERT INTO factset_history (ticker, report_date, appearance_section, change_pct, context_summary)
+                   VALUES (?, ?, 'decliner', ?, ?)""",
+                (d.get('ticker', ''), report_date, d.get('change_pct', 0.0),
+                 d.get('reason', '')[:200])
+            )
+
+        # Estimate revisions
+        for e in structured_dict.get('estimate_revisions', []):
+            context = f"{e.get('item', '')} revised {e.get('revision_pct', '')}% by {e.get('broker', '')}"
+            cur.execute(
+                """INSERT INTO factset_history (ticker, report_date, appearance_section, change_pct, context_summary)
+                   VALUES (?, ?, 'estimate', ?, ?)""",
+                (e.get('ticker', ''), report_date, e.get('revision_pct'), context[:200])
+            )
+
+        # Top stories — extract tickers mentioned
+        for story in structured_dict.get('top_stories', []):
+            for t in story.get('tickers_mentioned', []):
+                cur.execute(
+                    """INSERT INTO factset_history (ticker, report_date, appearance_section, change_pct, context_summary)
+                       VALUES (?, ?, 'top_story', NULL, ?)""",
+                    (t, report_date, story.get('headline', '')[:200])
+                )
+
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[History] Update error: {e}")
+
+
 def _process_pdf_job(job_id: str):
-    """Background worker: process a single PDF job.
+    """Layer 1B: 4-step analysis pipeline.
+
+    Step 1: Structured extraction (Layer 1C — regex, no LLM)
+    Step 2: Pydantic validation of parsed structure + data quality
+    Step 3: LLM analysis with structured data + history context (or rule-based fallback)
+    Step 4: Store results in factset_structured + factset_analysis + factset_history
 
     Bug 3 Fix: Runs in a daemon thread, never blocks Flask request handlers.
-    Implements retry logic with circuit breaker fallback.
     """
     try:
         conn = sqlite3.connect(DB_PATH)
@@ -550,19 +873,38 @@ def _process_pdf_job(job_id: str):
         conn.commit()
         conn.close()
 
+        # ── Step 1: Structured extraction (Layer 1C — all regex, no LLM) ──
+        from factset_parser import parse_factset_document
+        structured = parse_factset_document(raw_text)
+        structured_dict = structured.model_dump()
+
+        # ── Step 2: Validate + compute quality ──
+        quality = structured.data_quality_score
+        failures = structured.extraction_failures
+        print(f"[Job {job_id}] Step 1-2: Data quality={quality:.2f}, "
+              f"tickers={len(structured.all_tickers)}, "
+              f"failures={failures}")
+
+        # ── Step 3: LLM/Rule-based analysis ──
+        # Fetch history context: recent appearances for each ticker
+        history_context = _get_ticker_history(structured.all_tickers[:30], days=3)
+
         result = None
         method = 'pending'
 
         if _is_circuit_open():
             # Circuit breaker is open — skip AI, use rule-based
             result = _generate_factset_summary(raw_text)
+            result['data_quality_score'] = quality
+            result['trade_signals'] = []
+            result['questions_to_challenge'] = []
             method = 'rule_based_circuit_breaker'
             print(f"[Job {job_id}] Circuit breaker OPEN, using rule-based")
         else:
-            # Try AI with retries
+            # Try AI with retries — pass structured data + history
             for attempt in range(AI_MAX_RETRIES + 1):
                 try:
-                    result = _ai_analyze_pdf(raw_text)
+                    result = _ai_analyze_pdf(raw_text, structured_dict, history_context)
                     _record_ai_success()
                     method = 'ai'
                     print(f"[Job {job_id}] AI analysis succeeded (attempt {attempt + 1})")
@@ -571,12 +913,23 @@ def _process_pdf_job(job_id: str):
                     _record_ai_failure()
                     print(f"[Job {job_id}] AI attempt {attempt + 1} failed: {e}")
                     if attempt == AI_MAX_RETRIES:
-                        # All retries exhausted — fallback to rule-based
                         result = _generate_factset_summary(raw_text)
+                        result['data_quality_score'] = quality
+                        result['trade_signals'] = []
+                        result['questions_to_challenge'] = []
                         method = 'rule_based_fallback'
                         print(f"[Job {job_id}] All AI retries failed, using rule-based")
 
-        # Write result
+        # Force confidence=low if data quality is poor (T3 threat control)
+        if quality < 0.5 and result:
+            result['confidence'] = min(result.get('confidence', 0.5), 0.3)
+
+        # ── Step 4: Store structured data + analysis + ticker history ──
+        _store_structured(job_id, structured_dict, quality)
+        _store_analysis(job_id, result, method)
+        _update_ticker_history(structured_dict)
+
+        # Write result to agent_jobs (same pattern as before)
         conn = sqlite3.connect(DB_PATH)
         cur = conn.cursor()
         cur.execute(
@@ -714,19 +1067,40 @@ def news_ticker(ticker):
 
 @app.route('/api/news/live')
 def news_live():
-    """Market-wide live news aggregation with sentiment analysis."""
+    """Market-wide live news aggregation with sentiment analysis.
+
+    L2-02 Fix: Expanded from ^GSPC alone to 7 tickers covering broad market,
+    plus macro-focused Google News keywords for comprehensive market coverage.
+    Scan scope: SPX / NDX / DJI / VIX / TNX / SPY / QQQ
+    """
     category = flask_request.args.get('category', 'all')
     limit = int(flask_request.args.get('limit', 50))
 
     headlines = []
+
+    # ── Yahoo Finance: broad market indices + ETFs (5 articles each) ──
+    _LIVE_TICKERS = ['^GSPC', '^IXIC', '^DJI', '^VIX', '^TNX', 'SPY', 'QQQ']
+    for sym in _LIVE_TICKERS:
+        headlines.extend(_parse_rss(
+            f'https://feeds.finance.yahoo.com/rss/2.0/headline?s={sym}&region=US&lang=en-US',
+            'Yahoo Finance', limit=5
+        ))
+
+    # ── Google News: macro + general market headlines ──
     headlines.extend(_parse_rss(
-        'https://feeds.finance.yahoo.com/rss/2.0/headline?s=^GSPC&region=US&lang=en-US',
-        'Yahoo Finance Markets', limit=15
+        'https://news.google.com/rss/search?q=Fed+Treasury+earnings+macro+market+moving&hl=en-US&gl=US&ceid=US:en',
+        'Google News Macro', limit=10
     ))
-    headlines.extend(_parse_rss(
-        'https://news.google.com/rss/search?q=stock+market+today&hl=en-US&gl=US&ceid=US:en',
-        'Google News Markets', limit=10
-    ))
+
+    # Deduplicate by title (overlapping tickers may return same headline)
+    seen_titles = set()
+    unique_headlines = []
+    for h in headlines:
+        title_key = h['title'].strip().lower()
+        if title_key not in seen_titles:
+            seen_titles.add(title_key)
+            unique_headlines.append(h)
+    headlines = unique_headlines
 
     scores = [h['sentimentScore'] for h in headlines if h['sentimentScore'] != 0]
     avg_score = round(sum(scores) / len(scores), 3) if scores else 0.0
@@ -735,11 +1109,12 @@ def news_live():
         'category': category,
         'articles': headlines[:limit],
         'count': min(len(headlines), limit),
+        'scanScope': 'SPX / NDX / DJI / VIX / TNX / SPY / QQQ + Google Macro',
         'marketSentiment': {
             'score': avg_score,
             'label': 'bullish' if avg_score > 0.15 else 'bearish' if avg_score < -0.15 else 'neutral',
         },
-        'dataSource': 'rss_aggregator (Yahoo Finance + Google News)',
+        'dataSource': 'rss_aggregator (Yahoo Finance 7-ticker + Google News macro)',
         'lastUpdated': datetime.utcnow().isoformat() + 'Z',
     })
 
@@ -989,17 +1364,125 @@ def agent_job_status(job_id):
     })
 
 
-# ── Agent Pipeline Status ─────────────────────────────────────────────────
+# ── Agent Natural Language Query (P0 — keyword; P2+ → RAG) ───────────────
 
-@app.route('/api/news/agent/status')
-def agent_status():
-    """AI agent pipeline status including circuit breaker state."""
-    pending = 0
-    completed = 0
-    failed = 0
+@app.route('/api/news/agent/query', methods=['POST'])
+def agent_query():
+    """Natural language query against stored FactSet analyses.
+
+    P0 implementation: keyword + ticker matching against factset_structured + factset_analysis.
+    Returns relevant sections from the most recent matching report.
+
+    Query types:
+    - "What did NVDA do today?" → lookup factset_history + latest analysis
+    - "Any earnings surprises?" → scan gainers/decliners for earnings keywords
+    - "What are the macro risks?" → return macro_warnings from latest report
+    """
+    body = flask_request.get_json(silent=True) or {}
+    query = body.get('query', '').strip()
+    if not query:
+        return jsonify({'error': 'Missing query parameter'}), 400
+
+    query_lower = query.lower()
+
+    # Extract tickers from query (1-5 uppercase letters)
+    ticker_pattern = re.compile(r'\b([A-Z]{1,5})\b')
+    query_tickers = [m.group(1) for m in ticker_pattern.finditer(query)
+                     if m.group(1) not in {'THE', 'AND', 'FOR', 'WHAT', 'DID', 'ANY', 'ARE', 'HOW', 'DO'}]
+
+    results = {'query': query, 'matches': [], 'ticker_history': {}, 'source': 'factset_structured'}
+
     try:
         conn = sqlite3.connect(DB_PATH)
         cur = conn.cursor()
+
+        # Search ticker history if tickers found in query
+        if query_tickers:
+            placeholders = ','.join('?' for _ in query_tickers)
+            cur.execute(
+                f"""SELECT ticker, report_date, appearance_section, change_pct, context_summary
+                    FROM factset_history
+                    WHERE ticker IN ({placeholders})
+                    ORDER BY created_at DESC LIMIT 20""",
+                query_tickers
+            )
+            for row in cur.fetchall():
+                t = row[0]
+                if t not in results['ticker_history']:
+                    results['ticker_history'][t] = []
+                results['ticker_history'][t].append({
+                    'date': row[1], 'section': row[2],
+                    'change_pct': row[3], 'context': row[4],
+                })
+
+        # Search latest analysis for keyword matches
+        cur.execute(
+            """SELECT job_id, report_date, trade_signals, questions_to_challenge,
+                      overall_score, overall_label, confidence, method
+               FROM factset_analysis
+               ORDER BY created_at DESC LIMIT 5"""
+        )
+        for row in cur.fetchall():
+            signals = json.loads(row[2]) if row[2] else []
+            questions = json.loads(row[3]) if row[3] else []
+            match_entry = {
+                'job_id': row[0], 'report_date': row[1],
+                'overall_score': row[4], 'overall_label': row[5],
+                'confidence': row[6], 'method': row[7],
+                'matched_signals': [], 'matched_questions': [],
+            }
+            # Filter signals/questions by ticker or keyword
+            for s in signals:
+                if (any(t.lower() in s.get('ticker', '').lower() for t in query_tickers) or
+                        any(kw in json.dumps(s).lower() for kw in query_lower.split())):
+                    match_entry['matched_signals'].append(s)
+            for q in questions:
+                if any(kw in json.dumps(q).lower() for kw in query_lower.split()):
+                    match_entry['matched_questions'].append(q)
+            # Include if any matches or if it's the most recent
+            if match_entry['matched_signals'] or match_entry['matched_questions'] or not results['matches']:
+                results['matches'].append(match_entry)
+
+        # Search structured data for keyword matches
+        cur.execute(
+            "SELECT structured_json FROM factset_structured ORDER BY created_at DESC LIMIT 1"
+        )
+        row = cur.fetchone()
+        if row:
+            structured = json.loads(row[0])
+            # If query mentions macro/risk/warning
+            if any(kw in query_lower for kw in ['macro', 'risk', 'warning', 'fed', 'tariff', 'rate']):
+                results['macro_context'] = {
+                    'synopsis': structured.get('synopsis', {}),
+                    'sectors': structured.get('sector_snapshots', []),
+                }
+            # If query mentions earnings/estimate/revision
+            if any(kw in query_lower for kw in ['earning', 'estimate', 'revision', 'analyst']):
+                results['estimate_context'] = structured.get('estimate_revisions', [])
+
+        conn.close()
+    except Exception as e:
+        return jsonify({'error': f'Query failed: {e}'}), 500
+
+    return jsonify(results)
+
+
+# ── Agent Pipeline Status (enhanced with data_quality + history_stats) ────
+
+@app.route('/api/news/agent/status')
+def agent_status():
+    """AI agent pipeline status including circuit breaker state, data quality, and history stats."""
+    pending = 0
+    completed = 0
+    failed = 0
+    data_quality = {'latest_score': None, 'avg_30d': None, 'extraction_failures_today': []}
+    history_stats = {'total_reports': 0, 'total_ticker_records': 0, 'oldest_record': None}
+
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cur = conn.cursor()
+
+        # Job counts
         cur.execute("SELECT status, COUNT(*) FROM agent_jobs GROUP BY status")
         for status, count in cur.fetchall():
             if status == 'pending':
@@ -1008,6 +1491,31 @@ def agent_status():
                 completed = count
             elif status == 'failed':
                 failed = count
+
+        # Data quality stats
+        cur.execute(
+            "SELECT data_quality_score, extraction_failures FROM factset_structured ORDER BY created_at DESC LIMIT 1"
+        )
+        row = cur.fetchone()
+        if row:
+            data_quality['latest_score'] = row[0]
+            try:
+                data_quality['extraction_failures_today'] = json.loads(row[1]) if row[1] else []
+            except Exception:
+                pass
+
+        # History stats
+        cur.execute("SELECT COUNT(DISTINCT job_id) FROM factset_structured")
+        row = cur.fetchone()
+        if row:
+            history_stats['total_reports'] = row[0] or 0
+
+        cur.execute("SELECT COUNT(*), MIN(created_at) FROM factset_history")
+        row = cur.fetchone()
+        if row:
+            history_stats['total_ticker_records'] = row[0] or 0
+            history_stats['oldest_record'] = row[1]
+
         conn.close()
     except Exception:
         pass
@@ -1030,6 +1538,8 @@ def agent_status():
             'completed': completed,
             'failed': failed,
         },
+        'data_quality': data_quality,
+        'history_stats': history_stats,
         'timestamp': datetime.utcnow().isoformat() + 'Z',
     })
 
